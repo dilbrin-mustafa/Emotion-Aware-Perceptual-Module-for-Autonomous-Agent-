@@ -39,6 +39,9 @@ class AttributeExtractor:
         dominant_color = self._extract_dominant_color(frame, bbox)
         record['color_history'].append(dominant_color)
         
+        # Get the STABLE color based on history
+        stable_dominant_color = self._get_stable_color(obj_id)
+
         time_in_frame = timestamp - record['first_seen']
         
         return {
@@ -46,7 +49,7 @@ class AttributeExtractor:
             'bbox': bbox,
             'speed': speed,  # m/s
             'direction': direction,  # degrees
-            'dominant_color': dominant_color,
+            'dominant_color': stable_dominant_color,
             'time_in_frame': time_in_frame,
             'position': (center_x, center_y)
         }
@@ -106,41 +109,88 @@ class AttributeExtractor:
         # Calculate angle in degrees (0-360)
         direction = np.degrees(np.arctan2(dy, dx)) % 360
         return direction
-    
-    def _extract_dominant_color(self, frame, bbox, k=1):
-        """Extract dominant clothing color using K-means"""
+
+    def _extract_dominant_color(self, frame, bbox, k=5):
+        """Extract dominant clothing color using a two-step process."""
         x1, y1, x2, y2 = map(int, bbox)
         
         # Extract region (focus on upper body for clothing)
         height = y2 - y1
-        upper_body_y1 = y1 + int(height * 0.2)  # Start from 20% down
-        upper_body_y2 = y1 + int(height * 0.6)  # End at 60% down (avoid face)
-        
-        # Ensure coordinates are within frame bounds
-        upper_body_y1 = max(y1, upper_body_y1)
-        upper_body_y2 = min(y2, upper_body_y2)
-        
-        if upper_body_y2 <= upper_body_y1 or x2 <= x1:
-            return (0, 0, 0)  # Default black
-        
-        roi = frame[upper_body_y1:upper_body_y2, x1:x2]
+        width_inset = int((x2 - x1) * 0.15)
+        upper_body_x1 = x1 + width_inset
+        upper_body_x2 = x2 - width_inset
+        upper_body_y1 = y1 + int(height * 0.1)
+        upper_body_y2 = y1 + int(height * 0.5)
+
+        # Ensure coordinates are valid
+        upper_body_y1 = max(0, upper_body_y1)
+        upper_body_y2 = min(frame.shape[0], upper_body_y2)
+        upper_body_x1 = max(0, upper_body_x1)
+        upper_body_x2 = min(frame.shape[1], upper_body_x2)
+
+        if upper_body_y2 <= upper_body_y1 or upper_body_x2 <= upper_body_x1:
+            return (0, 0, 0)
+
+        roi = frame[upper_body_y1:upper_body_y2, upper_body_x1:upper_body_x2]
         
         if roi.size == 0:
             return (0, 0, 0)
+
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         
-        # Reshape and convert to float32
-        pixel_data = roi.reshape(-1, 3).astype(np.float32)
-        
+        # Step 1: Check for black. Black has low Value and low Saturation.
+        # We define 'black' as pixels with Value < 70 and Saturation < 50.
+        black_mask = cv2.inRange(hsv_roi, (0, 0, 0), (180, 50, 70))
+        percent_black = cv2.countNonZero(black_mask) / roi.size
+
+        # If more than 40% of the pixels are black, we classify it as black.
+        if percent_black > 0.4:
+            return (0, 0, 0) # Return BGR for Black
+
+        # Step 2: If not black, proceed with the original color filtering.
+        # Filter out highlights and shadows for colored clothes.
+        mask = cv2.inRange(hsv_roi, (0, 40, 50), (180, 255, 220))
+        pixel_data = roi[mask > 0]
+
+        if len(pixel_data) == 0:
+            pixel_data = roi.reshape(-1, 3) # Fallback if mask removes everything
+
+        pixel_data = pixel_data.astype(np.float32)
+
         if len(pixel_data) < k:
+            if len(pixel_data) > 0:
+                avg_color = np.mean(pixel_data, axis=0).astype(int)
+                return (int(avg_color[0]), int(avg_color[1]), int(avg_color[2]))
             return (0, 0, 0)
         
-        # Apply K-means
+        # Apply K-means on the filtered pixels
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
         _, labels, centers = cv2.kmeans(pixel_data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
         
-        # Get dominant color
-        dominant_color = centers[0].astype(int)
-        return tuple(dominant_color)
+        _, counts = np.unique(labels, return_counts=True)
+        dominant_cluster_index = np.argmax(counts)
+        dominant_color = centers[dominant_cluster_index].astype(int)
+
+        return (int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2]))
+
+    def _get_stable_color(self, obj_id):
+        """
+        Averages the color over the last few frames to get a stable color.
+        """
+        record = self.individual_records[obj_id]
+        color_history = record['color_history']
+
+        if not color_history:
+            return (0, 0, 0)
+
+        # Get the last 15 colors
+        recent_colors = list(color_history)[-15:]
+
+        # Calculate the average color
+        stable_color = np.mean(recent_colors, axis=0)
+
+        # Explicitly convert to a tuple of standard Python integers
+        return (int(stable_color[0]), int(stable_color[1]), int(stable_color[2]))
     
     def get_individual_statistics(self, obj_id):
         """Get comprehensive statistics for an individual"""

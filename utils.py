@@ -35,6 +35,19 @@ class VisualizationUtils:
                            (int(bbox[0]), max(int(bbox[1]) - 10, 15)),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                 
+                if data.get('dominant_color') is not None:
+                    # BGR color from attribute extractor
+                    dress_color = data['dominant_color']
+
+                    # Position the color swatch next to the bounding box
+                    swatch_x1 = int(bbox[2]) + 5
+                    swatch_y1 = int(bbox[1])
+                    swatch_x2 = swatch_x1 + 20
+                    swatch_y2 = swatch_y1 + 20
+
+                    cv2.rectangle(display_frame, (swatch_x1, swatch_y1), (swatch_x2, swatch_y2), dress_color, -1)
+                    cv2.rectangle(display_frame, (swatch_x1, swatch_y1), (swatch_x2, swatch_y2), (255, 255, 255), 1) # White border
+
                 # Draw movement direction if available
                 if data.get('direction') is not None and data.get('position') is not None:
                     self.draw_direction(display_frame, data['position'], data['direction'], color)

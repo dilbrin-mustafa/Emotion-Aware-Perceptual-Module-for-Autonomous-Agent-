@@ -1,6 +1,7 @@
 import cv2
 import time
 import json
+import numpy as np
 from detection_tracker import CrowdDetectorTracker
 from attribute_extractor import AttributeExtractor
 from performance_profiler import PerformanceProfiler
@@ -12,7 +13,7 @@ class EmotionAwarePerceptualModule:
         self.frame_time = 1.0 / target_fps
         
         # Initialize components
-        self.detector_tracker = CrowdDetectorTracker()
+        self.detector_tracker = CrowdDetectorTracker(confidence_threshold=0.15)
         self.attribute_extractor = AttributeExtractor()
         self.performance_profiler = PerformanceProfiler()
         self.visualizer = VisualizationUtils()
@@ -72,6 +73,9 @@ class EmotionAwarePerceptualModule:
             
             frame_count += 1
         
+        # frame count
+        self.crowd_data["frame_count"] = frame_count
+
         cap.release()
         cv2.destroyAllWindows()
         
@@ -152,7 +156,8 @@ class EmotionAwarePerceptualModule:
     def get_dominant_colors(self, colors):
         """Get most frequent colors in crowd"""
         from collections import Counter
-        color_counts = Counter(colors)
+        valid_colors = [c for c in colors if isinstance(c, tuple) and len(c) == 3]
+        color_counts = Counter(valid_colors)
         return [color for color, _ in color_counts.most_common(3)]
     
     def generate_report(self):
@@ -170,14 +175,52 @@ class EmotionAwarePerceptualModule:
         
         print("Report generated: crowd_analysis_report.json")
         return report
-    
+
     def analyze_crowd_behavior(self):
         """Analyze overall crowd behavior patterns"""
         # Implement crowd behavior analysis
+        collective_states = self.crowd_data["collective_state"]
+        if not collective_states:
+            return {
+                "average_crowd_density": 0,
+                "peak_activity_period": "N/A",
+                "movement_patterns": {}
+            }
+
+        total_density = sum(state["crowd_density"] for state in collective_states.values())
+        average_density = total_density / len(collective_states) if collective_states else 0
+
+        peak_frame = max(collective_states, key=lambda f: collective_states[f]["crowd_density"])
+        peak_density = collective_states[peak_frame]["crowd_density"]
+        peak_time_seconds = peak_frame / self.target_fps
+        peak_activity_period = f"{int(peak_time_seconds // 60):02d}:{int(peak_time_seconds % 60):02d} (Frame {peak_frame}) with {peak_density} people"
+
+        all_directions = []
+        for frame_data_list in self.crowd_data["individuals"].values():
+            for individual_data in frame_data_list:
+                if individual_data["direction"] is not None:
+                    all_directions.append(individual_data["direction"])
+
+        if not all_directions:
+            movement_patterns = {"dominant_direction": "N/A", "coherence": "N/A"}
+        else:
+            bins = np.arange(0, 361, 90)
+            hist, _ = np.histogram(all_directions, bins=bins)
+            direction_labels = ["East", "North", "West", "South"]
+            dominant_direction_index = np.argmax(hist)
+            dominant_direction = direction_labels[dominant_direction_index]
+
+            avg_coherence = np.mean([state["movement_coherence"] for state in collective_states.values()])
+
+            movement_patterns = {
+                "dominant_direction": dominant_direction,
+                "coherence_score": f"{avg_coherence:.2f}"
+            }
+
         return {
-            "average_crowd_density": "N/A",
-            "peak_activity_period": "N/A",
-            "movement_patterns": "N/A"
+            "average_crowd_density": round(average_density, 2),
+            "peak_activity_period": peak_activity_period,
+            "movement_patterns": movement_patterns
         }
 
 if __name__ == "__main__":
