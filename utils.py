@@ -28,6 +28,8 @@ class VisualizationUtils:
                 
                 # Draw ID and info
                 info_text = f"ID:{obj_id}"
+                if 'confidence' in data:
+                    info_text += f" ({data['confidence']:.2f})"
                 if data.get('speed') is not None:
                     info_text += f" S:{data['speed']:.1f}m/s"
                 

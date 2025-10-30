@@ -43,6 +43,11 @@ class EmotionAwarePerceptualModule:
             ret, frame = cap.read()
             if not ret:
                 break
+
+            max_w = 1920  # keep original if already smaller
+            if frame.shape[1] > max_w:
+                scale = max_w / frame.shape[1]
+                frame = cv2.resize(frame, (int(frame.shape[1]*scale), int(frame.shape[0]*scale)))
             
             # Process frame
             processed_data = self.process_frame(frame, frame_count)
@@ -94,6 +99,7 @@ class EmotionAwarePerceptualModule:
             individual_data = self.attribute_extractor.extract_attributes(
                 frame, bbox, obj_id, frame_count
             )
+            # attach last detection confidence if you want (not required)
             individuals_data[obj_id] = individual_data
             
             # Update global tracking
