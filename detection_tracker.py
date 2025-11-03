@@ -69,7 +69,7 @@ class CrowdDetectorTracker:
         confidence_threshold: float = 0.4,
         iou_threshold: float = 0.55,
         img_size: int = 960,
-        model_name: str = "yolov8s.pt",
+        model_name: str = "yolov8n.pt",
         max_age: int = 40,
         match_iou_threshold: float = 0.3
     ):

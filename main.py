@@ -234,4 +234,4 @@ if __name__ == "__main__":
     perceptual_module = EmotionAwarePerceptualModule(target_fps=25)
     
     # Process video (0 for webcam, or file path)
-    perceptual_module.process_video_stream("video/video.mp4")  # Replace with your video file
+    perceptual_module.process_video_stream("video/video.mp4")

@@ -1,0 +1,9 @@
+# Ignore the virtual environment folder
+/.venv
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore live output files
+crowd_analysis_report.json
