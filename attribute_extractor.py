@@ -138,40 +138,25 @@ class AttributeExtractor:
 
         hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         
-        # Step 1: Check for black. Black has low Value and low Saturation.
-        # We define 'black' as pixels with Value < 70 and Saturation < 50.
-        black_mask = cv2.inRange(hsv_roi, (0, 0, 0), (180, 50, 70))
-        percent_black = cv2.countNonZero(black_mask) / roi.size
+        # 1. Create a mask to filter out black, white, and grey pixels
+        # (low saturation, low value, or high value)
+        mask = cv2.inRange(hsv_roi,
+                           (0, 40, 50),     # H:0, S:40, V:50
+                           (180, 255, 200)) # H:180, S:255, V:200
 
-        # If more than 40% of the pixels are black, we classify it as black.
-        if percent_black > 0.4:
-            return (0, 0, 0) # Return BGR for Black
-
-        # Step 2: If not black, proceed with the original color filtering.
-        # Filter out highlights and shadows for colored clothes.
-        mask = cv2.inRange(hsv_roi, (0, 40, 50), (180, 255, 220))
+        # 2. Get the BGR pixels that match the mask
         pixel_data = roi[mask > 0]
 
-        if len(pixel_data) == 0:
-            pixel_data = roi.reshape(-1, 3) # Fallback if mask removes everything
+        if pixel_data.size == 0:
+            # Fallback: if mask removed everything, just get the mean of the whole ROI
+            pixel_data = roi.reshape(-1, 3)
+            if pixel_data.size == 0:
+                 return (0, 0, 0)
 
-        pixel_data = pixel_data.astype(np.float32)
-
-        if len(pixel_data) < k:
-            if len(pixel_data) > 0:
-                avg_color = np.mean(pixel_data, axis=0).astype(int)
-                return (int(avg_color[0]), int(avg_color[1]), int(avg_color[2]))
-            return (0, 0, 0)
+        # 3. Calculate the average BGR color of those pixels
+        avg_color = np.mean(pixel_data, axis=0).astype(int)
         
-        # Apply K-means on the filtered pixels
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
-        _, labels, centers = cv2.kmeans(pixel_data, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-        
-        _, counts = np.unique(labels, return_counts=True)
-        dominant_cluster_index = np.argmax(counts)
-        dominant_color = centers[dominant_cluster_index].astype(int)
-
-        return (int(dominant_color[0]), int(dominant_color[1]), int(dominant_color[2]))
+        return (int(avg_color[0]), int(avg_color[1]), int(avg_color[2]))
 
     def _get_stable_color(self, obj_id):
         """
