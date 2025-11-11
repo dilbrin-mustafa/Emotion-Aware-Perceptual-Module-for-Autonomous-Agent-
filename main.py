@@ -11,6 +11,7 @@ class EmotionAwarePerceptualModule:
     def __init__(self, target_fps=25):
         self.target_fps = target_fps
         self.frame_time = 1.0 / target_fps
+        # sdhkfsdkj
         
         # Initialize components
         self.detector_tracker = CrowdDetectorTracker(confidence_threshold=0.15)
