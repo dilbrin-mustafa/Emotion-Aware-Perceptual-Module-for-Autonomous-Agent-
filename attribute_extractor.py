@@ -2,6 +2,21 @@ import cv2
 import numpy as np
 from collections import defaultdict
 import time
+import ctypes
+import os
+
+# Load C++ Color Library
+_color_cpp = None
+try:
+    lib_path = os.path.join(os.path.dirname(__file__), "color_core.dll") # or .so
+    if os.path.exists(lib_path):
+        _color_cpp = ctypes.CDLL(lib_path)
+        # void get_dominant_color_kmeans(uchar* data, int w, int h, int stride, int k, int* out)
+        _color_cpp.get_dominant_color_kmeans.argtypes = [
+            ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_int)
+        ]
+except Exception as e:
+    print(f"Color C++ module load failed: {e}")
 
 class AttributeExtractor:
     def __init__(self):
@@ -55,7 +70,7 @@ class AttributeExtractor:
         }
     
     def _calculate_speed(self, obj_id):
-        """Calculate movement speed in m/s"""
+        """Calculate movement speed in m/s with Glitch Filter"""
         record = self.individual_records[obj_id]
         positions = record['positions']
         timestamps = record['timestamps']
@@ -64,7 +79,7 @@ class AttributeExtractor:
             return 0.0
         
         # Use recent positions for speed calculation
-        recent_positions = positions[-5:]  # Last 5 positions
+        recent_positions = positions[-5:]
         recent_timestamps = timestamps[-5:]
         
         total_distance = 0
@@ -85,7 +100,14 @@ class AttributeExtractor:
             total_time += time_diff
         
         if total_time > 0:
-            return total_distance / total_time
+            speed = total_distance / total_time
+
+            # If speed is superhuman (> 8.0 m/s), return 0.0 or the last valid speed
+            if speed > 8.0: 
+                return 0.0
+                
+            return speed
+            
         return 0.0
     
     def _calculate_direction(self, obj_id):
@@ -110,52 +132,60 @@ class AttributeExtractor:
         direction = np.degrees(np.arctan2(dy, dx)) % 360
         return direction
 
-    def _extract_dominant_color(self, frame, bbox, k=5):
-        """Extract dominant clothing color using a two-step process."""
+    def _extract_dominant_color(self, frame, bbox, k=3):
+        """
+        Extract dominant clothing color. 
+        Uses C++ K-Means if available, falls back to Python if not.
+        """
         x1, y1, x2, y2 = map(int, bbox)
         
-        # Extract region (focus on upper body for clothing)
+        # 1. Define Upper Body Region
         height = y2 - y1
         width_inset = int((x2 - x1) * 0.15)
-        upper_body_x1 = x1 + width_inset
-        upper_body_x2 = x2 - width_inset
-        upper_body_y1 = y1 + int(height * 0.1)
-        upper_body_y2 = y1 + int(height * 0.5)
-
-        # Ensure coordinates are valid
-        upper_body_y1 = max(0, upper_body_y1)
-        upper_body_y2 = min(frame.shape[0], upper_body_y2)
-        upper_body_x1 = max(0, upper_body_x1)
-        upper_body_x2 = min(frame.shape[1], upper_body_x2)
+        
+        upper_body_x1 = max(0, x1 + width_inset)
+        upper_body_x2 = min(frame.shape[1], x2 - width_inset)
+        upper_body_y1 = max(0, y1 + int(height * 0.1))
+        upper_body_y2 = min(frame.shape[0], y1 + int(height * 0.5))
 
         if upper_body_y2 <= upper_body_y1 or upper_body_x2 <= upper_body_x1:
             return (0, 0, 0)
 
+        # Extract the Region of Interest (ROI)
         roi = frame[upper_body_y1:upper_body_y2, upper_body_x1:upper_body_x2]
         
         if roi.size == 0:
             return (0, 0, 0)
 
-        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        
-        # 1. Create a mask to filter out black, white, and grey pixels
-        # (low saturation, low value, or high value)
-        mask = cv2.inRange(hsv_roi,
-                           (0, 40, 50),     # H:0, S:40, V:50
-                           (180, 255, 200)) # H:180, S:255, V:200
+        # 2. C++ K-Means
+        # We check if the library loaded successfully at the top of the file
+        if _color_cpp:
+            try:
+                # Ensure the image data is stored continuously in memory for C++
+                if not roi.flags['C_CONTIGUOUS']:
+                    roi = np.ascontiguousarray(roi)
+                
+                height, width, channels = roi.shape
+                stride = roi.strides[0] # Bytes per row
+                
+                # Get pointer to the raw image data
+                data_ptr = roi.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
+                
+                # Create an array of 3 integers to hold the result [B, G, R]
+                output = (ctypes.c_int * 3)()
+                
+                # Call the C++ function
+                # Signature: get_dominant_color_kmeans(data, width, height, stride, k, output)
+                _color_cpp.get_dominant_color_kmeans(data_ptr, width, height, stride, k, output)
+                
+                return (int(output[0]), int(output[1]), int(output[2]))
+            except Exception as e:
+                print(f"C++ Error: {e}")
+                # If C++ fails, fall through to Python backup below
 
-        # 2. Get the BGR pixels that match the mask
-        pixel_data = roi[mask > 0]
-
-        if pixel_data.size == 0:
-            # Fallback: if mask removed everything, just get the mean of the whole ROI
-            pixel_data = roi.reshape(-1, 3)
-            if pixel_data.size == 0:
-                 return (0, 0, 0)
-
-        # 3. Calculate the average BGR color of those pixels
-        avg_color = np.mean(pixel_data, axis=0).astype(int)
-        
+        # 3. Python Fallback
+        # This is simple averaging logic, kept as backup
+        avg_color = np.mean(roi, axis=(0, 1)).astype(int)
         return (int(avg_color[0]), int(avg_color[1]), int(avg_color[2]))
 
     def _get_stable_color(self, obj_id):
