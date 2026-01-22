@@ -1,13 +1,44 @@
-# detection_tracker.py
 import cv2
 import math
 import numpy as np
 import torch
+import ctypes
+import os
 from collections import defaultdict, deque
 from typing import Dict, List, Tuple, Optional
 
-# ---------- Helper: IoU ----------
+# Load C++ Library 
+_iou_cpp = None
+try:
+    # Determine library name based on OS
+    import platform
+    lib_name = "iou_core.dll" if platform.system() == "Windows" else "iou_core.so"
+    lib_path = os.path.join(os.path.dirname(__file__), lib_name)
+    
+    if os.path.exists(lib_path):
+        _iou_cpp = ctypes.CDLL(lib_path)
+        # Define argument types: 8 floats
+        _iou_cpp.calculate_iou.argtypes = [
+            ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float,
+            ctypes.c_float, ctypes.c_float, ctypes.c_float, ctypes.c_float
+        ]
+        # Define return type: float
+        _iou_cpp.calculate_iou.restype = ctypes.c_float
+        print("[System] C++ Optimization Module Loaded Successfully.")
+    else:
+        print("[System] C++ module not found. Using Python fallback.")
+except Exception as e:
+    print(f"[System] Failed to load C++ module: {e}")
+
+# Helper: IoU
 def iou_xyxy(a, b) -> float:
+    if _iou_cpp:
+        return _iou_cpp.calculate_iou(
+            float(a[0]), float(a[1]), float(a[2]), float(a[3]),
+            float(b[0]), float(b[1]), float(b[2]), float(b[3])
+        )
+    
+    # Fallback to Python implementation
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
     xi1, yi1 = max(ax1, bx1), max(ay1, by1)
@@ -20,7 +51,7 @@ def iou_xyxy(a, b) -> float:
     union = area_a + area_b - inter
     return inter / union if union > 0 else 0.0
 
-# ---------- Lightweight motion-aware track ----------
+# Lightweight motion-aware track
 class Track:
     def __init__(self, tid: int, bbox: List[int], frame_id: int):
         self.id = tid
@@ -68,9 +99,9 @@ class CrowdDetectorTracker:
         self,
         confidence_threshold: float = 0.4,
         iou_threshold: float = 0.55,
-        img_size: int = 960,
+        img_size: int = 640,
         model_name: str = "yolov8n.pt",
-        max_age: int = 40,
+        max_age: int = 20,
         match_iou_threshold: float = 0.3
     ):
         self.confidence_threshold = confidence_threshold
@@ -107,7 +138,7 @@ class CrowdDetectorTracker:
         self.tracks: Dict[int, Track] = {}
         self.next_id = 0
 
-    # -------- Detection --------
+    # Detection
     def detect_people(self, frame) -> List[Dict]:
         if self.model is not None:
             return self._detect_yolov8(frame)
@@ -207,8 +238,7 @@ class CrowdDetectorTracker:
                 })
         return detections
 
-
-    # -------- Tracking --------
+    # Tracking
     def update_tracks(self, detections: List[Dict], frame_count: int) -> Dict[int, List[int]]:
         """
         Associate detections to existing tracks using IoU between predicted boxes.

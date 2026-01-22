@@ -5,5 +5,11 @@
 __pycache__/
 *.pyc
 
+# Ignore the YOLO Model
+*.pt
+
+# Ignore the Compiled Dynamic Libraries
+*.dll
+
 # Ignore live output files
 crowd_analysis_report.json

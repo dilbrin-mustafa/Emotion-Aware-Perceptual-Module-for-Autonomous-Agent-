@@ -79,11 +79,8 @@ class VisualizationUtils:
             print(f"Error drawing direction: {e}")
     
     def draw_performance_info(self, frame, performance_data, processed_data):
-        """Draw performance metrics on frame"""
+        """Draw performance metrics on frame with readable background"""
         try:
-            y_offset = 20
-            line_height = 25
-            
             metrics = [
                 f"FPS: {performance_data.get('current_fps', 0):.1f}",
                 f"Frame: {processed_data.get('frame_id', 0)}",
@@ -92,9 +89,25 @@ class VisualizationUtils:
                 f"Memory: {performance_data.get('memory_usage_mb', 0):.1f}MB"
             ]
             
+            # Define box size based on number of lines
+            line_height = 25
+            box_width = 220
+            box_height = 20 + (len(metrics) * line_height)
+            
+            # Create overlay for transparency
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (0, 0), (box_width, box_height), (0, 0, 0), -1)
+            
+            # Blend overlay (0.6 opacity)
+            alpha = 0.6
+            cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+            
+            # Draw Text
+            y_offset = 25
             for i, metric in enumerate(metrics):
                 cv2.putText(frame, metric, (10, y_offset + i * line_height),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                           
         except Exception as e:
             print(f"Error drawing performance info: {e}")
     
@@ -117,7 +130,6 @@ def calibrate_pixel_to_meter(camera_height, focal_length, object_height=1.7):
     object_height: average person height in meters (default 1.7m)
     """
     # This is a simplified calibration
-    # In practice, you'd need camera intrinsics and proper calibration
     return object_height / focal_length
 
 def save_video_output(frames, output_path, fps=25):
