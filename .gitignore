@@ -11,5 +11,8 @@ __pycache__/
 # Ignore the Compiled Dynamic Libraries
 *.dll
 
+# Ignore the Emotion model
+*.onnx
+
 # Ignore live output files
 crowd_analysis_report.json

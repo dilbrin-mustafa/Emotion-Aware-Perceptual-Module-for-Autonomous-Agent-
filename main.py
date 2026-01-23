@@ -1,8 +1,9 @@
 import cv2
 import time
 import json
+import math
 import numpy as np
-from detection_tracker import CrowdDetectorTracker
+from detection_tracker import DeepSortTracker
 from attribute_extractor import AttributeExtractor
 from performance_profiler import PerformanceProfiler
 from utils import VisualizationUtils
@@ -14,37 +15,50 @@ class EmotionAwarePerceptualModule:
         
 # SCENARIO PROFILES
         configs = {
-            # Scenario 1: Mall Walk (Average case)
+            # Scenario 1: Mall Walk
             "mall": {       
-                "conf": 0.25,
+                "conf": 0.30,
                 "age": 50,
-                "min_frames": 10   # Standard 1-second filter
+                "min_frames": 10,
+                "reid_thres": 0.4
             },
-            # Scenario 2: Crowd Marathon (Fast moving, high density)
+            # Scenario 2: Crowd Marathon
             "marathon": {   
-                "conf": 0.25,      # Balanced threshold
-                "age": 30,         # Short memory is fine (runners don't stop)
-                "min_frames": 20   # Loose filter: Catch fast runners (0.4s visibility)
+                "conf": 0.35,
+                "age": 30,         
+                "min_frames": 15,
+                "reid_thres": 0.45,
+                "enable_emotion": True
             },
-            # Scenario 3: Office Setup (Static, obstacles)
-            "office": { 
-                "conf": 0.25,      # High threshold: Ignore chairs/shadows
-                "age": 100,        # Long memory: Remember sitting people
-                "min_frames": 30   # Strict filter: Ignore momentary glitches
+            # Scenario 3: Classroom
+            "classroom": {       
+                "conf": 0.70,
+                "age": 400,
+                "min_frames": 120,
+                "reid_thres": 0.90,
+                "enable_emotion": True
             }
         }
         
-        # Select active config (Default to 'mall' if not specified)
+        # Select active config
         self.cfg = configs.get(scenario, configs["mall"])
         print(f"Loaded Scenario: {scenario.upper()} | Config: {self.cfg}")
 
-        # Initialize Tracker with Profile Settings
-        self.detector_tracker = CrowdDetectorTracker(
-            confidence_threshold=self.cfg["conf"], 
-            max_age=self.cfg["age"]
+        # Initialize NEW Deep SORT Tracker
+        self.detector_tracker = DeepSortTracker(
+            max_age=self.cfg["age"],
+            reid_thres=self.cfg.get("reid_thres", 0.4)
         )
+        # set confidence in the update loop or init if supported
+        if hasattr(self.detector_tracker, 'detector'):
+            self.detector_tracker.detector.conf = self.cfg["conf"]
 
-        self.attribute_extractor = AttributeExtractor()
+        # Checks if 'enable_emotion' is in the config and True
+        use_emotion = self.cfg.get("enable_emotion", False)
+        self.attribute_extractor = AttributeExtractor(
+            enable_emotion=use_emotion, 
+            scenario_mode=scenario 
+        )
         self.performance_profiler = PerformanceProfiler()
         self.visualizer = VisualizationUtils()
 
@@ -119,11 +133,8 @@ class EmotionAwarePerceptualModule:
 
     def process_frame(self, frame, frame_count):
         """Process a single frame (Standard High-Accuracy Mode)"""
-        
-        # 1. Always Run Detection (Maximum Accuracy, No Ghosting)
-        # We ignore 'run_detection' flag and just run every time.
-        detections = self.detector_tracker.detect_people(frame)
-        tracked_objects = self.detector_tracker.update_tracks(detections, frame_count)
+
+        tracked_objects = self.detector_tracker.update(frame)
         
         individuals_data = {}
         for obj_id, bbox in tracked_objects.items():
@@ -165,32 +176,39 @@ class EmotionAwarePerceptualModule:
         speeds = [ind["speed"] for ind in individuals.values() if ind["speed"] is not None]
         colors = [ind["dominant_color"] for ind in individuals.values()]
         
+        # Calculate Emotion Distribution
+        emotions = [ind["emotion"] for ind in individuals.values() if ind.get("emotion") != "Unknown"]
+        dominant_emotion = "Neutral"
+        if emotions:
+             from collections import Counter
+             dominant_emotion = Counter(emotions).most_common(1)[0][0]
+
         self.crowd_data["collective_state"][frame_data["frame_id"]] = {
             "crowd_density": len(individuals),
             "average_speed": sum(speeds) / len(speeds) if speeds else 0,
             "movement_coherence": self.calculate_movement_coherence(individuals),
-            "dominant_colors": self.get_dominant_colors(colors)
+            "dominant_colors": self.get_dominant_colors(colors),
+            "dominant_crowd_emotion": dominant_emotion
         }
     
     def calculate_movement_coherence(self, individuals_data):
-        """Calculate how coherent the crowd movement is"""
-        if len(individuals_data) < 2:
-            return 1.0
+        """Calculate how coherent the crowd movement is (Vector Averaging)"""
+        directions = [d['direction'] for d in individuals_data.values() if d['direction'] is not None]
         
-        directions = []
-        for data in individuals_data.values():
-            if data["direction"] is not None:
-                directions.append(data["direction"])
+        if len(directions) < 2: return 1.0
         
-        if len(directions) < 2:
-            return 1.0
+        # Convert degrees to radians
+        rads = np.radians(directions)
         
-        # Simple coherence measure (can be enhanced)
-        avg_direction = sum(directions) / len(directions)
-        variance = sum((d - avg_direction) ** 2 for d in directions) / len(directions)
-        coherence = max(0, 1 - variance / 180)  # Normalize to 0-1
+        # Average the vectors (this handles the 355 vs 5 degree issue)
+        avg_sin = np.mean(np.sin(rads))
+        avg_cos = np.mean(np.cos(rads))
         
-        return coherence
+        # Calculate the length of the resultant vector (R)
+        # R ranges from 0 (chaos) to 1 (perfectly aligned)
+        coherence = np.sqrt(avg_sin**2 + avg_cos**2)
+        
+        return float(coherence)
     
     def get_dominant_colors(self, colors):
         """Get most frequent colors in crowd"""
@@ -221,10 +239,9 @@ class EmotionAwarePerceptualModule:
             "total_frames_processed": self.crowd_data["frame_count"],
             "unique_individuals_count": final_unique_count,
             "performance_summary": self.performance_profiler.get_summary(),
-            "hardware_requirements_definition": {
-                "status": "PASS",
-                "target_fps": self.target_fps
-            },
+            "hardware_requirements_definition": self.performance_profiler.get_hardware_recommendations(
+                target_fps=self.target_fps
+            ),
             "crowd_analysis": self.analyze_crowd_behavior()
         }
         
@@ -237,15 +254,16 @@ class EmotionAwarePerceptualModule:
 
     def analyze_crowd_behavior(self):
         """Analyze overall crowd behavior patterns"""
-        # Implement crowd behavior analysis
         collective_states = self.crowd_data["collective_state"]
         if not collective_states:
             return {
                 "average_crowd_density": 0,
                 "peak_activity_period": "N/A",
-                "movement_patterns": {}
+                "movement_patterns": {},
+                "overall_emotion": "N/A"
             }
 
+        # 1. Existing Density Logic
         total_density = sum(state["crowd_density"] for state in collective_states.values())
         average_density = total_density / len(collective_states) if collective_states else 0
 
@@ -254,6 +272,7 @@ class EmotionAwarePerceptualModule:
         peak_time_seconds = peak_frame / self.target_fps
         peak_activity_period = f"{int(peak_time_seconds // 60):02d}:{int(peak_time_seconds % 60):02d} (Frame {peak_frame}) with {peak_density} people"
 
+        # 2. Existing Movement Logic
         all_directions = []
         for frame_data_list in self.crowd_data["individuals"].values():
             for individual_data in frame_data_list:
@@ -261,7 +280,7 @@ class EmotionAwarePerceptualModule:
                     all_directions.append(individual_data["direction"])
 
         if not all_directions:
-            movement_patterns = {"dominant_direction": "N/A", "coherence": "N/A"}
+            movement_patterns = {"dominant_direction": "N/A", "coherence_score": "N/A"}
         else:
             bins = np.arange(0, 361, 90)
             hist, _ = np.histogram(all_directions, bins=bins)
@@ -269,30 +288,49 @@ class EmotionAwarePerceptualModule:
             dominant_direction_index = np.argmax(hist)
             dominant_direction = direction_labels[dominant_direction_index]
 
-            avg_coherence = np.mean([state["movement_coherence"] for state in collective_states.values()])
+            # Use vector coherence
+            directions_rad = np.radians(all_directions)
+            avg_sin = np.mean(np.sin(directions_rad))
+            avg_cos = np.mean(np.cos(directions_rad))
+            coherence = np.sqrt(avg_sin**2 + avg_cos**2)
 
             movement_patterns = {
                 "dominant_direction": dominant_direction,
-                "coherence_score": f"{avg_coherence:.2f}"
+                "coherence_score": f"{coherence:.2f}"
             }
+
+        # 3. Overall Crowd Emotion Logic
+        all_emotions = []
+        # Gather the final stable emotion from every unique individual
+        for history in self.crowd_data["individuals"].values():
+            # Get the most recent data point for this person
+            last_record = history[-1] 
+            if last_record.get("emotion") and last_record["emotion"] != "Unknown":
+                all_emotions.append(last_record["emotion"])
+        
+        from collections import Counter
+        overall_emotion = "Neutral"
+        if all_emotions:
+            overall_emotion = Counter(all_emotions).most_common(1)[0][0]
 
         return {
             "average_crowd_density": round(average_density, 2),
             "peak_activity_period": peak_activity_period,
-            "movement_patterns": movement_patterns
+            "movement_patterns": movement_patterns,
+            "overall_crowd_emotion": overall_emotion
         }
 
 if __name__ == "__main__":
     # Initialize the module
 
-    # 1. For the Airport (Normal)
-    # per_module = EmotionAwarePerceptualModule(scenario="mall")
-    # per_module.process_video_stream("video/video.mp4")
+    # 1. For the Mall
+    per_module = EmotionAwarePerceptualModule(scenario="mall")
+    per_module.process_video_stream("video/video.mp4")
     
     # 2. For the Marathon (Fast, Large Crowd)
     # per_module = EmotionAwarePerceptualModule(scenario="marathon")
     # per_module.process_video_stream("video/video1.mp4")
 
     # 3. For the Office (Static, Ghost Objects)
-    per_module = EmotionAwarePerceptualModule(scenario="office")
-    per_module.process_video_stream("video/video2.mp4")
+    # per_module = EmotionAwarePerceptualModule(scenario="classroom")
+    # per_module.process_video_stream("video/video2.mp4")
