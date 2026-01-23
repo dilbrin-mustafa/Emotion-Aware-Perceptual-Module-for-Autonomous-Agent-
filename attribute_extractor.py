@@ -100,13 +100,7 @@ class AttributeExtractor:
             total_time += time_diff
         
         if total_time > 0:
-            speed = total_distance / total_time
-
-            # If speed is superhuman (> 8.0 m/s), return 0.0 or the last valid speed
-            if speed > 8.0: 
-                return 0.0
-                
-            return speed
+            return total_distance / total_time
             
         return 0.0
     

@@ -8,16 +8,46 @@ from performance_profiler import PerformanceProfiler
 from utils import VisualizationUtils
 
 class EmotionAwarePerceptualModule:
-    def __init__(self, target_fps=25):
+    def __init__(self, target_fps=25, scenario="general"):
         self.target_fps = target_fps
         self.frame_time = 1.0 / target_fps
         
-        # Initialize components
-        self.detector_tracker = CrowdDetectorTracker(confidence_threshold=0.15)
+# SCENARIO PROFILES
+        configs = {
+            # Scenario 1: Mall Walk (Average case)
+            "mall": {       
+                "conf": 0.25,
+                "age": 50,
+                "min_frames": 10   # Standard 1-second filter
+            },
+            # Scenario 2: Crowd Marathon (Fast moving, high density)
+            "marathon": {   
+                "conf": 0.25,      # Balanced threshold
+                "age": 30,         # Short memory is fine (runners don't stop)
+                "min_frames": 20   # Loose filter: Catch fast runners (0.4s visibility)
+            },
+            # Scenario 3: Office Setup (Static, obstacles)
+            "office": { 
+                "conf": 0.25,      # High threshold: Ignore chairs/shadows
+                "age": 100,        # Long memory: Remember sitting people
+                "min_frames": 30   # Strict filter: Ignore momentary glitches
+            }
+        }
+        
+        # Select active config (Default to 'mall' if not specified)
+        self.cfg = configs.get(scenario, configs["mall"])
+        print(f"Loaded Scenario: {scenario.upper()} | Config: {self.cfg}")
+
+        # Initialize Tracker with Profile Settings
+        self.detector_tracker = CrowdDetectorTracker(
+            confidence_threshold=self.cfg["conf"], 
+            max_age=self.cfg["age"]
+        )
+
         self.attribute_extractor = AttributeExtractor()
         self.performance_profiler = PerformanceProfiler()
         self.visualizer = VisualizationUtils()
-        
+
         # Results storage
         self.crowd_data = {
             "frame_count": 0,
@@ -176,9 +206,20 @@ class EmotionAwarePerceptualModule:
             target_fps=self.target_fps
         )
 
+        # DYNAMIC FILTER based on Profile
+        real_individuals = []
+        # Use the profile specific filter
+        filter_threshold = self.cfg["min_frames"] 
+
+        for obj_id, history in self.crowd_data["individuals"].items():
+            if len(history) > filter_threshold:
+                real_individuals.append(obj_id)
+
+        final_unique_count = len(real_individuals)
+
         report = {
             "total_frames_processed": self.crowd_data["frame_count"],
-            "unique_individuals_count": len(self.crowd_data["individuals"]),
+            "unique_individuals_count": final_unique_count,
             "performance_summary": self.performance_profiler.get_summary(),
             "hardware_requirements_definition": {
                 "status": "PASS",
@@ -243,8 +284,15 @@ class EmotionAwarePerceptualModule:
 
 if __name__ == "__main__":
     # Initialize the module
-    perceptual_module = EmotionAwarePerceptualModule(target_fps=25)
+
+    # 1. For the Airport (Normal)
+    # per_module = EmotionAwarePerceptualModule(scenario="mall")
+    # per_module.process_video_stream("video/video.mp4")
     
-    # Process video (0 for webcam, or file path)
-    perceptual_module.process_video_stream("video/video.mp4")
-    # perceptual_module.process_video_stream("video/video1.mp4")
+    # 2. For the Marathon (Fast, Large Crowd)
+    # per_module = EmotionAwarePerceptualModule(scenario="marathon")
+    # per_module.process_video_stream("video/video1.mp4")
+
+    # 3. For the Office (Static, Ghost Objects)
+    per_module = EmotionAwarePerceptualModule(scenario="office")
+    per_module.process_video_stream("video/video2.mp4")
