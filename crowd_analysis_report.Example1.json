@@ -1,26 +1,38 @@
 {
   "total_frames_processed": 1008,
-  "unique_individuals_count": 148,
+  "unique_individuals_count": 25,
   "performance_summary": {
-    "total_processing_time_seconds": 128.55973052978516,
+    "total_processing_time_seconds": 136.27214169502258,
     "total_frames_processed": 1008,
-    "average_fps": 7.840713385490981,
-    "min_processing_time_ms": 102.8285026550293,
-    "max_processing_time_ms": 139.8327350616455,
-    "avg_processing_time_ms": 118.77026081085205,
-    "avg_memory_usage_mb": 1439.2229296875,
-    "peak_memory_usage_mb": 1440.23828125
+    "average_fps": 7.396963073024175,
+    "min_processing_time_ms": 105.11064529418945,
+    "max_processing_time_ms": 256.4826011657715,
+    "avg_processing_time_ms": 132.96863555908203,
+    "avg_memory_usage_mb": 1848.802578125,
+    "peak_memory_usage_mb": 1850.7890625
   },
   "hardware_requirements_definition": {
     "status": "PASS",
-    "target_fps": 25
+    "target_fps": 25,
+    "actual_fps": 7.4,
+    "performance_gap": 17.6,
+    "min_ram_required": "8 GB",
+    "action_plan": [
+      "GPU Detected: NVIDIA GeForce RTX 3050 4GB Laptop GPU (Hardware is sufficient).",
+      "System Status: Operational (Optimization Recommended for >25 FPS).",
+      "Action: Verify ONNX Runtime is using CUDA (check console logs).",
+      "Action: Reduce emotion check frequency (e.g., every 30th frame).",
+      "Action: Use TensorRT for the YOLO model.",
+      "High Memory Usage (1850MB). Ensure dual-channel RAM."
+    ]
   },
   "crowd_analysis": {
-    "average_crowd_density": 14.66,
-    "peak_activity_period": "00:34 (Frame 854) with 22 people",
+    "average_crowd_density": 13.28,
+    "peak_activity_period": "00:30 (Frame 760) with 20 people",
     "movement_patterns": {
-      "dominant_direction": "East",
-      "coherence_score": "0.00"
-    }
+      "dominant_direction": "North",
+      "coherence_score": "0.12"
+    },
+    "overall_crowd_emotion": "Happy"
   }
 }

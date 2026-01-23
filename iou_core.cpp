@@ -1,5 +1,3 @@
-// iou_core.cpp
-// Low-level C++ implementation of IoU calculation to satisfy Requirement [Ib]
 #include <algorithm>
 
 // We use extern "C" to prevent name mangling, making it easy to call from Python via ctypes

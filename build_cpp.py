@@ -10,6 +10,11 @@ def compile_cpp():
             "out_nix": "iou_core.so"
         },
         {
+            "src": "blas_core.cpp", 
+            "out_win": "blas_core.dll", 
+            "out_nix": "blas_core.so"
+        },
+        {
             "src": "color_core.cpp", 
             "out_win": "color_core.dll", 
             "out_nix": "color_core.so"
@@ -31,7 +36,7 @@ def compile_cpp():
             output_file = mod["out_nix"]
             cmd = [compiler, "-shared", "-fPIC", "-o", output_file, source_file, "-O3"]
 
-        print(f"Compiling {source_file} -> {output_file}...")
+        print(f"Compiling {source_file} -> {output_file}")
         
         try:
             if not os.path.exists(source_file):

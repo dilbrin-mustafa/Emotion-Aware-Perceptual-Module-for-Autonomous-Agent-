@@ -26,31 +26,34 @@ class VisualizationUtils:
                              (int(bbox[2]), int(bbox[3])), 
                              color, 2)
                 
-                # Draw ID and info
+                # ID | Conf | Emotion
                 info_text = f"ID:{obj_id}"
-                if 'confidence' in data:
-                    info_text += f" ({data['confidence']:.2f})"
-                if data.get('speed') is not None:
-                    info_text += f" S:{data['speed']:.1f}m/s"
+                if data.get('emotion') and data['emotion'] != "Unknown":
+                    info_text += f" | {data['emotion']}"
                 
                 cv2.putText(display_frame, info_text, 
                            (int(bbox[0]), max(int(bbox[1]) - 10, 15)),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
                 
+                # Draw bottom label (Speed)
+                if data.get('speed') is not None:
+                    speed_text = f"{data['speed']:.1f}m/s"
+                    cv2.putText(display_frame, speed_text, 
+                               (int(bbox[0]), int(bbox[3]) + 20),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+                
+                # Draw Color Swatch
                 if data.get('dominant_color') is not None:
-                    # BGR color from attribute extractor
                     dress_color = data['dominant_color']
-
-                    # Position the color swatch next to the bounding box
                     swatch_x1 = int(bbox[2]) + 5
                     swatch_y1 = int(bbox[1])
                     swatch_x2 = swatch_x1 + 20
                     swatch_y2 = swatch_y1 + 20
 
                     cv2.rectangle(display_frame, (swatch_x1, swatch_y1), (swatch_x2, swatch_y2), dress_color, -1)
-                    cv2.rectangle(display_frame, (swatch_x1, swatch_y1), (swatch_x2, swatch_y2), (255, 255, 255), 1) # White border
+                    cv2.rectangle(display_frame, (swatch_x1, swatch_y1), (swatch_x2, swatch_y2), (255, 255, 255), 1)
 
-                # Draw movement direction if available
+                # Draw Direction
                 if data.get('direction') is not None and data.get('position') is not None:
                     self.draw_direction(display_frame, data['position'], data['direction'], color)
             
