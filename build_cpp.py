@@ -35,16 +35,16 @@ def compile_cpp():
         
         try:
             if not os.path.exists(source_file):
-                print(f"Error: Source file '{source_file}' not found!")
+                print(f"Source file '{source_file}' not found!")
                 continue
 
             subprocess.check_call(cmd)
-            print(f"Success! Generated {output_file}")
+            print(f"Generated {output_file}")
             
         except subprocess.CalledProcessError:
-            print(f"Error: Compilation failed for {source_file}.")
+            print(f"Compilation failed for {source_file}.")
         except FileNotFoundError:
-            print("Error: g++ compiler not found. Ensure MinGW is installed.")
+            print("g++ compiler not found. Ensure MinGW is installed.")
             break
 
 if __name__ == "__main__":

@@ -24,11 +24,11 @@ try:
         ]
         # Define return type: float
         _iou_cpp.calculate_iou.restype = ctypes.c_float
-        print("[System] C++ Optimization Module Loaded Successfully.")
+        print("C++ Optimization Module Loaded Successfully.")
     else:
-        print("[System] C++ module not found. Using Python fallback.")
+        print("C++ module not found. Using Python fallback.")
 except Exception as e:
-    print(f"[System] Failed to load C++ module: {e}")
+    print(f"Failed to load C++ module: {e}")
 
 # Helper: IoU
 def iou_xyxy(a, b) -> float:
@@ -91,8 +91,8 @@ class CrowdDetectorTracker:
 
     Parameters to tweak for accuracy:
       - model_name: 'yolov8n.pt'|'yolov8s.pt'|'yolov8m.pt'|'yolov8l.pt'|'yolov8x.pt'
-      - conf_thres: 0.25–0.55 (higher => fewer false positives)
-      - iou_thres:  0.45–0.70  (higher => tighter NMS)
+      - conf_thres: 0.25 - 0.55 (higher => fewer false positives)
+      - iou_thres:  0.45 - 0.70  (higher => tighter NMS)
       - img_size:   640/960/1280 (larger => more accurate, slower)
     """
     def __init__(
@@ -101,7 +101,7 @@ class CrowdDetectorTracker:
         iou_threshold: float = 0.55,
         img_size: int = 640,
         model_name: str = "yolov8n.pt",
-        max_age: int = 20,
+        max_age: int = 40,
         match_iou_threshold: float = 0.3
     ):
         self.confidence_threshold = confidence_threshold

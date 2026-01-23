@@ -1,0 +1,26 @@
+{
+  "total_frames_processed": 311,
+  "unique_individuals_count": 22,
+  "performance_summary": {
+    "total_processing_time_seconds": 16.322705507278442,
+    "total_frames_processed": 311,
+    "average_fps": 19.05321393327364,
+    "min_processing_time_ms": 33.521175384521484,
+    "max_processing_time_ms": 62.73818016052246,
+    "avg_processing_time_ms": 41.48435592651367,
+    "avg_memory_usage_mb": 1314.086015625,
+    "peak_memory_usage_mb": 1315.55078125
+  },
+  "hardware_requirements_definition": {
+    "status": "PASS",
+    "target_fps": 25
+  },
+  "crowd_analysis": {
+    "average_crowd_density": 10.49,
+    "peak_activity_period": "00:08 (Frame 209) with 15 people",
+    "movement_patterns": {
+      "dominant_direction": "West",
+      "coherence_score": "0.01"
+    }
+  }
+}
